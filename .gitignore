@@ -10,6 +10,7 @@ ENV/
 # Spark checkpoints & logs
 .checkpoint/
 checkpoint/
+checkpoints/
 metastore_db/
 derby.log
 spark-warehouse/

@@ -18,7 +18,7 @@ if "%JAVA_HOME%"=="" (
         )
     )
 )
-if "%KAFKA_HEAP_OPTS%"=="" set "KAFKA_HEAP_OPTS=-Xmx1G -Xms1G"
+if "%KAFKA_HEAP_OPTS%"=="" set "KAFKA_HEAP_OPTS=-Xmx384m -Xms128m"
 
 echo ============================================================
 echo  Starting Apache Kafka (KRaft mode) on localhost:9092
