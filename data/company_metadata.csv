@@ -1,0 +1,21 @@
+ticker,company_name,sector,exchange
+AAPL,Apex Analytics Platform,Technology,NASDAQ
+NVDA,Nova Vision Dynamics,Technology,NASDAQ
+MSFT,Micro Solutions & Fintech,Technology,NASDAQ
+GOOG,Global Online Operations,Communication Services,NASDAQ
+AMZN,Apex Merchant Zone,Consumer Cyclical,NASDAQ
+TSLA,Terra Stellar Automotive,Consumer Cyclical,NASDAQ
+META,Metaverse Engineered Tech,Communication Services,NASDAQ
+AVGO,Advanced Vector Grid Operations,Technology,NASDAQ
+COST,Continental Omnichannel Stores,Consumer Defensive,NASDAQ
+NFLX,Next-Gen Film & Live Xperience,Communication Services,NASDAQ
+AMD,Advanced Micro Devices Inc,Technology,NASDAQ
+QCOM,Quantum Communications Corp,Technology,NASDAQ
+ADBE,Adaptive Digital Blue Enterprise,Technology,NASDAQ
+INTC,Integrated Network Technologies,Technology,NASDAQ
+CSCO,Cloud Systems & Cyber Operations,Technology,NASDAQ
+TXN,Trans-Xtreme Networks,Technology,NASDAQ
+PYPL,Payment Yields & Peer Ledger,Financial Services,NASDAQ
+AMAT,Advanced Materials & Applied Tech,Technology,NASDAQ
+INTU,Intuitive Numerical Tools & Utilities,Technology,NASDAQ
+MRVL,Marvellous Robotics & Vision Labs,Technology,NASDAQ

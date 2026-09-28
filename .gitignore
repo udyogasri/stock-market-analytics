@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.venv/
+venv/
+ENV/
+
+# Spark checkpoints & logs
+.checkpoint/
+checkpoint/
+metastore_db/
+derby.log
+spark-warehouse/
+
+# IDE
+.vscode/
+.idea/
+
+# Native Kafka & Hadoop
+kafka/
+hadoop/
+tmp_kafka/
+*.tgz
+/tmp/kraft-combined-logs/
