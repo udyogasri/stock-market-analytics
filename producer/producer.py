@@ -2,6 +2,7 @@
 """
 Simulated Stock Trades Kafka Producer
 Generates realistic random-walk trade events for 20 NASDAQ tickers.
+Supports injecting out-of-order/late events via --late-event-minutes.
 """
 
 import argparse
@@ -14,7 +15,7 @@ import signal
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 # Setup logging
@@ -92,6 +93,30 @@ class StockPriceSimulator:
         }
         return ticker, event
 
+    def generate_late_trade(self, late_minutes: float) -> tuple[str, dict]:
+        """
+        Generate a single simulated trade event with a timestamp in the past: (now - late_minutes).
+        Returns:
+            (ticker, trade_event_dict)
+        """
+        ticker = random.choice(self.tickers)
+        current_price = self.prices[ticker]
+
+        pct_change = random.gauss(0.0, 0.0015)
+        new_price = max(1.0, current_price * (1.0 + pct_change))
+        new_price = round(new_price, 2)
+        self.prices[ticker] = new_price
+
+        past_timestamp = (datetime.now(timezone.utc) - timedelta(minutes=late_minutes)).isoformat()
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "ticker": ticker,
+            "price": new_price,
+            "volume": random.randint(1, 5000),
+            "timestamp": past_timestamp
+        }
+        return ticker, event
+
 
 def create_kafka_producer(bootstrap_servers: str):
     """
@@ -153,8 +178,9 @@ def create_kafka_producer(bootstrap_servers: str):
                 linger_ms=20,
                 batch_size=65536,
                 acks=1,
+                api_version=(2, 6, 0),
                 key_serializer=lambda k: k.encode("utf-8"),
-                value_serializer=lambda v: json.dumps(v).encode("utf-8")
+                value_serializer=lambda v: json.dumps(v).encode("utf-8"),
             )
 
             class KafkaPythonWrapper:
@@ -177,7 +203,14 @@ def create_kafka_producer(bootstrap_servers: str):
             raise exc
 
 
-def run_producer(bootstrap_servers: str, topic: str, rate: int, metadata_path: str):
+def run_producer(
+    bootstrap_servers: str,
+    topic: str,
+    rate: int,
+    metadata_path: str,
+    late_event_minutes: float | None = None
+) -> None:
+    """Run simulated stock trades generation loop."""
     tickers = load_tickers_from_csv(metadata_path)
     simulator = StockPriceSimulator(tickers)
     producer = create_kafka_producer(bootstrap_servers)
@@ -195,13 +228,28 @@ def run_producer(bootstrap_servers: str, topic: str, rate: int, metadata_path: s
     logger.info("Starting trade producer for topic '%s' at target rate %d events/sec", topic, rate)
     logger.info("Simulating %d tickers with random-walk pricing.", len(tickers))
 
+    total_produced = 0
+    window_produced = 0
+
+    # Inject late event if requested via --late-event-minutes
+    if late_event_minutes is not None and late_event_minutes > 0:
+        late_ticker, late_event = simulator.generate_late_trade(late_event_minutes)
+        producer.send(topic, key=late_ticker, value=late_event)
+        producer.poll()
+        total_produced += 1
+        logger.info(
+            "*** LATE EVENT SENT *** | event_id=%s | ticker=%s | timestamp=%s | late_by_minutes=%.1f",
+            late_event["event_id"],
+            late_ticker,
+            late_event["timestamp"],
+            late_event_minutes,
+        )
+
     # Rate limiting & pacing setup
     # Slice size allows sub-millisecond precision on systems with coarse sleep timers
     slice_size = max(1, min(100, rate // 20))
     slice_interval = slice_size / float(rate)
 
-    total_produced = 0
-    window_produced = 0
     window_start_time = time.perf_counter()
     next_slice_time = time.perf_counter()
 
@@ -269,6 +317,12 @@ def main():
         default=os.path.join(os.path.dirname(__file__), "..", "data", "company_metadata.csv"),
         help="Path to company_metadata.csv"
     )
+    parser.add_argument(
+        "--late-event-minutes",
+        type=float,
+        default=None,
+        help="Send ONE extra trade event with timestamp (now - N minutes) before normal streaming.",
+    )
 
     args = parser.parse_args()
 
@@ -280,7 +334,8 @@ def main():
         bootstrap_servers=args.bootstrap_server,
         topic=args.topic,
         rate=args.rate,
-        metadata_path=args.metadata_csv
+        metadata_path=args.metadata_csv,
+        late_event_minutes=args.late_event_minutes,
     )
 
 
