@@ -1,2 +1,13 @@
 pyspark==3.5.0
+# delta-spark 3.2.x is compiled against Apache Spark 3.5.x
+delta-spark==3.2.0
 kafka-python-ng==2.2.3
+lz4==4.4.5
+rich==15.0.0
+boto3==1.43.103
+# duckdb is local-only for offline warehouse load path testing (do not package into AWS Lambda)
+duckdb==1.5.6
+streamlit==1.64.0
+plotly==7.1.0
+deltalake==1.6.6
+

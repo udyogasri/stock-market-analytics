@@ -2,10 +2,15 @@
 __pycache__/
 *.py[cod]
 *$py.class
+.env
 *.env
 .venv/
 venv/
 ENV/
+logs/
+*.duckdb
+hs_err_pid*.log
+replay_pid*.log
 
 # Spark checkpoints & logs
 .checkpoint/
@@ -14,6 +19,14 @@ checkpoints/
 metastore_db/
 derby.log
 spark-warehouse/
+delta/
+scratch/
+monitoring/metrics.log*
+export/
+warehouse/*.duckdb*
+warehouse/.duckdb*
+
+
 
 # IDE
 .vscode/

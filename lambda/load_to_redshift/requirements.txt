@@ -1,0 +1,4 @@
+# Minimal dependencies for AWS Lambda (Python 3.11 runtime)
+# boto3 and botocore are pre-installed in the AWS Lambda Python runtime.
+# duckdb and pyspark are strictly local dependencies and must NOT be packaged here.
+boto3==1.43.103

@@ -19,6 +19,7 @@ if "%JAVA_HOME%"=="" (
     )
 )
 if "%KAFKA_HEAP_OPTS%"=="" set "KAFKA_HEAP_OPTS=-Xmx384m -Xms128m"
+if "%KAFKA_JVM_PERFORMANCE_OPTS%"=="" set "KAFKA_JVM_PERFORMANCE_OPTS=-server -XX:+UseSerialGC -Djava.awt.headless=true"
 
 echo ============================================================
 echo  Starting Apache Kafka (KRaft mode) on localhost:9092

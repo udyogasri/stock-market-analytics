@@ -1,0 +1,6 @@
+============================================================
+ Starting Apache Kafka (KRaft mode) on localhost:9092
+ Keep this terminal open for the entire session.
+ Press Ctrl+C to stop the broker.
+============================================================
+^CTerminate batch job (Y/N)? 
