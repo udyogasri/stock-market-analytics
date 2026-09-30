@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Phase 5: CloudFormation infrastructure template for Stock Market Analytics
+  Warehouse Load Path (S3, Redshift Serverless, Lambda Orchestrator, SQS DLQ).
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: dev
+    Description: Environment stage name (dev, staging, prod)
+
+  RedshiftDatabaseName:
+    Type: String
+    Default: dev
+    Description: Database name inside Redshift Serverless namespace
+
+  RedshiftBaseCapacity:
+    Type: Number
+    Default: 8
+    AllowedValues: [8, 16, 24, 32, 64, 128]
+    Description: Base Redshift Processing Units (RPUs). 8 is the lowest cost tier.
+
+Resources:
+  # ----------------------------------------------------------------------------
+  # 1. Dead Letter Queue for Failed Lambda Invocations
+  # ----------------------------------------------------------------------------
+  WarehouseLoadDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub stock-warehouse-load-dlq-${EnvironmentName}
+      MessageRetentionPeriod: 1209600 # 14 days
+      KmsMasterKeyId: alias/aws/sqs
+
+  # ----------------------------------------------------------------------------
+  # 2. Private Encrypted S3 Storage Bucket
+  # ----------------------------------------------------------------------------
+  DataLakeBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: LambdaPermissionForS3
+    Properties:
+      BucketName: !Sub stock-streaming-datalake-${AWS::AccountId}-${EnvironmentName}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt WarehouseLoadFunction.Arn
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: export/
+                  - Name: suffix
+                    Value: manifest.json
+
+  # ----------------------------------------------------------------------------
+  # 3. IAM Role for Redshift COPY Command
+  # ----------------------------------------------------------------------------
+  RedshiftCopyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub StockRedshiftCopyRole-${EnvironmentName}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: redshift.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3ExportReadOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::stock-streaming-datalake-${AWS::AccountId}-${EnvironmentName}
+                  - !Sub arn:aws:s3:::stock-streaming-datalake-${AWS::AccountId}-${EnvironmentName}/*
+
+  # ----------------------------------------------------------------------------
+  # 4. Amazon Redshift Serverless Namespace and Workgroup
+  # ----------------------------------------------------------------------------
+  RedshiftNamespace:
+    Type: AWS::RedshiftServerless::Namespace
+    Properties:
+      NamespaceName: !Sub stock-analytics-namespace-${EnvironmentName}
+      DbName: !Ref RedshiftDatabaseName
+      IamRoles:
+        - !GetAtt RedshiftCopyRole.Arn
+
+  RedshiftWorkgroup:
+    Type: AWS::RedshiftServerless::Workgroup
+    DependsOn: RedshiftNamespace
+    Properties:
+      WorkgroupName: !Sub stock-analytics-workgroup-${EnvironmentName}
+      NamespaceName: !Sub stock-analytics-namespace-${EnvironmentName}
+      BaseCapacity: !Ref RedshiftBaseCapacity
+      PubliclyAccessible: false
+
+  # ----------------------------------------------------------------------------
+  # 5. IAM Role for Lambda Function (Least Privilege)
+  # ----------------------------------------------------------------------------
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub StockWarehouseLoadLambdaRole-${EnvironmentName}
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaBasicLogsAndDLQ
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt WarehouseLoadDLQ.Arn
+        - PolicyName: S3ReadManifestAndExport
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub arn:aws:s3:::stock-streaming-datalake-${AWS::AccountId}-${EnvironmentName}
+                  - !Sub arn:aws:s3:::stock-streaming-datalake-${AWS::AccountId}-${EnvironmentName}/export/*
+        - PolicyName: RedshiftDataAPIAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - redshift-data:BatchExecuteStatement
+                  - redshift-data:ExecuteStatement
+                  - redshift-data:DescribeStatement
+                  - redshift-data:GetStatementResult
+                Resource: '*'
+
+  # ----------------------------------------------------------------------------
+  # 6. AWS Lambda Function
+  # ----------------------------------------------------------------------------
+  WarehouseLoadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub stock-warehouse-load-${EnvironmentName}
+      Runtime: python3.11
+      Handler: handler.lambda_handler
+      Timeout: 300
+      MemorySize: 256
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          # Placeholder code replaced during deployment packaging
+          def lambda_handler(event, context):
+              import handler
+              return handler.lambda_handler(event, context)
+      Environment:
+        Variables:
+          WAREHOUSE_TARGET: redshift
+          REDSHIFT_WORKGROUP: !Sub stock-analytics-workgroup-${EnvironmentName}
+          REDSHIFT_DATABASE: !Ref RedshiftDatabaseName
+          REDSHIFT_COPY_ROLE_ARN: !GetAtt RedshiftCopyRole.Arn
+          AWS_REGION_NAME: !Ref AWS::Region
+      DeadLetterConfig:
+        TargetArn: !GetAtt WarehouseLoadDLQ.Arn
+
+  LambdaPermissionForS3:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt WarehouseLoadFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::stock-streaming-datalake-${AWS::AccountId}-${EnvironmentName}
+      SourceAccount: !Ref AWS::AccountId
+
+Outputs:
+  BucketName:
+    Description: Private S3 Data Lake Bucket
+    Value: !Ref DataLakeBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-BucketName
+
+  RedshiftWorkgroupName:
+    Description: Redshift Serverless Workgroup Name
+    Value: !Ref RedshiftWorkgroup
+    Export:
+      Name: !Sub ${AWS::StackName}-RedshiftWorkgroup
+
+  RedshiftNamespaceName:
+    Description: Redshift Serverless Namespace Name
+    Value: !Ref RedshiftNamespace
+    Export:
+      Name: !Sub ${AWS::StackName}-RedshiftNamespace
+
+  RedshiftCopyRoleArn:
+    Description: IAM Role ARN for Redshift COPY commands
+    Value: !GetAtt RedshiftCopyRole.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-RedshiftCopyRoleArn
+
+  LambdaFunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt WarehouseLoadFunction.Arn
+    Export:
+      Name: !Sub ${AWS::StackName}-LambdaFunctionArn
+
+  DLQQueueUrl:
+    Description: SQS Dead Letter Queue URL
+    Value: !Ref WarehouseLoadDLQ
